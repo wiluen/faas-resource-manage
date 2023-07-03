@@ -173,8 +173,45 @@ def launch_test(function_list,resource_cpu, resource_mem):
     data2txt(function_list,resource_cpu,resource_mem,per_func_latency,end2end_latency)
     print("===========================TEST END==============================="+"\n")
 
-
-
+def get_per_func_latency_search():
+    latency={}
+    call_times=[2,1,1,8,2,2,4,2,1,2,10,1]
+    lines=[10,5,5,20,6,5,10,5,5,5,40,5]
+    function=['get-left-ticket-of-interval','get-left-trip-tickets','get-price-by-routeid-and-traintype','get-route-by-routeid','get-route-by-tripid',
+              'get-sold-tickets','get-traintype-by-traintypeid','get-traintype-by-tripid','query-already-sold-orders','query-config-entity-by-config-name',
+              'query-for-station-id-by-station-name','query-for-travel']
+    # os.system("rm funclogs")    #  这个地方的路径是/home/user/code
+    perfunc_latency=[]
+    perfunc_latency_total=[]
+    i=0
+    for f in function:
+        os.system("bash /home/user/code/faas-resource/getLogs2.sh " + f +" "+ str(lines[i]) +" > /home/user/code/faas-resource/BO_test/01/log/funclogs-" + f )
+#   读logs时间就好了
+        log =open("/home/user/code/faas-resource/BO_test/01/log/funclogs-"+ f,"r")
+        time_pattern = '\(\d+\.\d+s\)'
+        for line in log:
+            all_times = re.findall(time_pattern, line)   #日志中所有时间
+            last_times = all_times[-call_times[i]:]     #属于这次调用的所有时间
+            res=0
+            for s in last_times:
+                num = float(re.search('\d+\.\d+', s).group(0))    #拆(0.001s)
+                res += num
+            perfunc_latency.append(res)
+            latency[function[i]]=float(res) 
+        i+=1   
+    return latency,perfunc_latency  
+    
+def launch_test(conf,function_list,resource_config):
+    update_deploy(function_list,resource_config)
+    print('wait function all runing...')
+    time.sleep(10)
+    end2end_latency=single_request_ml()   #last one
+    print('wait to Prometheus latency collect metircs...')
+    time.sleep(16)
+    per_func_latency=get_per_func_latency_search()  # 从k8s log提取每个函数的时间
+    data2txt(function_list,resource_cpu,resource_mem,per_func_latency,end2end_latency)
+    return per_func_latency
+    
 #查询metric，存入文件
 def profile(function_list):
     cpu_price=0.000016
